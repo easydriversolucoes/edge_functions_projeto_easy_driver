@@ -10,8 +10,7 @@ const PDF_MONKEY_ENDPOINT = "https://api.pdfmonkey.io/api/v1/documents";
 const DOCUMENT_TEMPLATE_ID = "EDD907F2-5DAC-4974-9443-BE4BFB79D478";
 
 // Novo endpoint para a função get-pdf
-const GET_PDF_ENDPOINT =
-  "https://ttnvqdkxivyumcipbfls.supabase.co/functions/v1/get-pdf";
+const GET_PDF_ENDPOINT = "https://ttnvqdkxivyumcipbfls.supabase.co/functions/v1/get-pdf";
 
 serve(async (req) => {
   try {
@@ -42,11 +41,26 @@ serve(async (req) => {
       .eq("id_pedido", id_pedido)
       .single();
 
-    if (errorInstancia || errorArgumentos || errorQualificacao) {
+    // Consultar informações da infração
+    const { data: pedidoData, error: pedidoError } = await supabase
+      .from('pedidos')
+      .select('enquadramento')
+      .eq('id_pedido', id_pedido)
+      .single();
+
+    const { data: infracaoData, error: infracaoError } = await supabase
+      .from('infracoes')
+      .select('artigo, descricao')
+      .eq('enquadramento', pedidoData?.enquadramento)
+      .single();
+
+    if (errorInstancia || errorArgumentos || errorQualificacao || pedidoError || infracaoError) {
       console.error("Erro ao buscar dados:", {
         errorInstancia,
         errorArgumentos,
         errorQualificacao,
+        pedidoError,
+        infracaoError
       });
       return new Response("Erro ao buscar dados no Supabase", { status: 500 });
     }
@@ -56,6 +70,7 @@ serve(async (req) => {
       resposta_instancia: respostaInstancia,
       respostas_argumentos: respostasArgumentos,
       respostas_qualificacao: respostasQualificacao,
+      infracoes: infracaoData
     };
 
     const pdfMonkeyRequest = {
@@ -64,7 +79,7 @@ serve(async (req) => {
         status: "pending",
         payload: payload,
         meta: {
-          _filename: `MeuRecurso - ${respostasQualificacao.auto_infracao}.pdf`,
+          _filename: `MeuRecurso - AIT ${respostasQualificacao.auto_infracao}.pdf`,
         },
       },
     };
