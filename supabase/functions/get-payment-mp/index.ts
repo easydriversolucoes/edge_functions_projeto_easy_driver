@@ -84,21 +84,26 @@ serve(async (req) => {
     } = responseData;
 
     // Inserindo os dados na tabela `pagamentos`
-    const { error } = await supabase
-      .from("pagamentos")
-      .insert({
-        id_pedido: external_reference ? parseInt(external_reference) : null,
-        id_pagamento_mp: id,
-        payment_type_id,
-        status,
-        status_detail,
-        payer,
-        identification: payer?.identification,
-        transaction_amount,
-        transaction_details,
-        point_of_interaction,
-        date_created,
-      });
+const { error } = await supabase
+.from("pagamentos")
+.insert({
+  id_pedido: external_reference ? parseInt(external_reference) : null,
+  id_pagamento_mp: id,
+  payment_type_id,
+  status,
+  status_detail,
+  payer: payer ? JSON.stringify(payer) : null, // Converte para JSON string ou null
+  identification: payer?.identification ? JSON.stringify(payer.identification) : null, // Converte para JSON string ou null
+  transaction_amount,
+  transaction_details: transaction_details
+    ? JSON.stringify(transaction_details)
+    : null, // Converte para JSON string ou null
+  point_of_interaction: point_of_interaction
+    ? JSON.stringify(point_of_interaction)
+    : null, // Converte para JSON string ou null
+  date_created,
+});
+
 
     if (error) {
       throw new Error(`Erro ao salvar no banco de dados: ${error.message}`);
