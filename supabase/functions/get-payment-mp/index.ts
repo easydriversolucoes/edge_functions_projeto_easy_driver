@@ -92,15 +92,11 @@ const { error } = await supabase
   payment_type_id,
   status,
   status_detail,
-  payer: payer ? JSON.stringify(payer) : null, // Converte para JSON string ou null
-  identification: payer?.identification ? JSON.stringify(payer.identification) : null, // Converte para JSON string ou null
+  payer: payer || null,
+  identification: payer?.identification || null,
   transaction_amount,
-  transaction_details: transaction_details
-    ? JSON.stringify(transaction_details)
-    : null, // Converte para JSON string ou null
-  point_of_interaction: point_of_interaction
-    ? JSON.stringify(point_of_interaction)
-    : null, // Converte para JSON string ou null
+  transaction_details: transaction_details || null,
+  point_of_interaction: point_of_interaction || null,
   date_created,
 });
 
