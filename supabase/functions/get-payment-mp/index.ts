@@ -24,57 +24,39 @@ serve(async (req) => {
 
   try {
     const { id }: { id: number } = await req.json();
+    console.log('ID recebido:', id); // Log para debug
 
     if (!id) {
       throw new Error("O campo 'id' é obrigatório.");
     }
 
-    const MAX_RETRIES = 5; // Número máximo de tentativas
-    const RETRY_DELAY = 2000; // Atraso entre tentativas (ms)
-
-    let status;
-    let responseData;
-    let attempts = 0;
-
-    // Loop para verificar o status da transação
-    do {
-      const mercadoPagoResponse = await fetch(
-        `https://api.mercadopago.com/v1/payments/${id}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${MERCADO_PAGO_ACCESS_TOKEN}`,
-          },
-        }
-      );
-
-      if (!mercadoPagoResponse.ok) {
-        throw new Error(
-          `Erro ao consultar o Mercado Pago: ${mercadoPagoResponse.statusText}`
-        );
+    // Faz a requisição ao Mercado Pago com timeout reduzido
+    const mercadoPagoResponse = await fetch(
+      `https://api.mercadopago.com/v1/payments/${id}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${MERCADO_PAGO_ACCESS_TOKEN}`,
+        },
+        // Adicionando timeout na requisição
+        signal: AbortSignal.timeout(3000), // 3 segundos de timeout
       }
-
-      responseData = await mercadoPagoResponse.json();
-      status = responseData.status;
-      attempts++;
-
-      if (status === "pending" || status === "authorized" || status === "in_process") {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
-      }
-    } while (
-      (status === "pending" || status === "authorized" || status === "in_process") &&
-      attempts < MAX_RETRIES
     );
 
-    if (!["approved", "rejected", "cancelled"].includes(status)) {
-      throw new Error("Status inválido recebido após tentativas.");
+    if (!mercadoPagoResponse.ok) {
+      throw new Error(
+        `Erro ao consultar o Mercado Pago: ${mercadoPagoResponse.statusText}`
+      );
     }
 
-    // Extração de dados relevantes da resposta
+    const responseData = await mercadoPagoResponse.json();
+    console.log('Dados recebidos do MP:', responseData.status); // Log para debug
+
     const { 
       external_reference, 
       payment_type_id, 
+      status,
       status_detail, 
       payer, 
       transaction_amount, 
@@ -83,35 +65,49 @@ serve(async (req) => {
       date_created 
     } = responseData;
 
-    // Inserindo os dados na tabela `pagamentos`
-const { error } = await supabase
-.from("pagamentos")
-.insert({
-  id_pedido: external_reference ? parseInt(external_reference) : null,
-  id_pagamento_mp: id,
-  payment_type_id,
-  status,
-  status_detail,
-  payer: payer || null,
-  identification: payer?.identification || null,
-  transaction_amount,
-  transaction_details: transaction_details || null,
-  point_of_interaction: point_of_interaction || null,
-  date_created,
-});
+    console.log('Preparando inserção no banco...'); // Log para debug
 
+    // Tentativa de inserção com timeout
+    const insertPromise = supabase
+      .from("pagamentos")
+      .insert({
+        id_pedido: external_reference ? parseInt(external_reference) : null,
+        id_pagamento_mp: id,
+        payment_type_id,
+        status,
+        status_detail,
+        payer: payer || null,
+        identification: payer?.identification || null,
+        transaction_amount,
+        transaction_details: transaction_details || null,
+        point_of_interaction: point_of_interaction || null,
+        date_created,
+      });
+
+    // Usando Promise.race para implementar um timeout manual
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Timeout na inserção do banco')), 4000);
+    });
+
+    const { error } = await Promise.race([insertPromise, timeoutPromise]) as any;
 
     if (error) {
+      console.error('Erro na inserção:', error); // Log para debug
       throw new Error(`Erro ao salvar no banco de dados: ${error.message}`);
     }
 
-    // Retorno de sucesso com informações adicionais
+    console.log('Inserção concluída com sucesso'); // Log para debug
+
     return new Response(
-      JSON.stringify({ message: "Dados salvos com sucesso.", attempts, status }),
+      JSON.stringify({ 
+        message: "Dados salvos com sucesso.", 
+        status: responseData.status 
+      }),
       { status: 200 }
     );
+
   } catch (error) {
-    console.error("Erro na Edge Function:", error);
+    console.error("Erro detalhado na Edge Function:", error); // Log mais detalhado
     return new Response(
       JSON.stringify({
         error: "Erro interno do servidor",
