@@ -84,23 +84,6 @@ serve(async (req) => {
     } = responseData;
 
     // Inserindo os dados na tabela `pagamentos`
-<<<<<<< HEAD
-    const { error } = await supabase
-    .from("pagamentos")
-    .insert({
-      id_pedido: external_reference ? parseInt(external_reference) : null,
-      id_pagamento_mp: id,
-      payment_type_id,
-      status,
-      status_detail,
-      payer: payer || null,
-      identification: payer?.identification || null,
-      transaction_amount,
-      transaction_details: transaction_details || null,
-      point_of_interaction: point_of_interaction || null,
-      date_created,
-    });
-=======
 const { error } = await supabase
 .from("pagamentos")
 .insert({
@@ -117,40 +100,11 @@ const { error } = await supabase
   date_created,
 });
 
->>>>>>> parent of 596ce97 (mudei o código devido ao limite de timeout do supabase que é de 5 segundos)
 
     if (error) {
       throw new Error(`Erro ao salvar no banco de dados: ${error.message}`);
     }
 
-<<<<<<< HEAD
-    // Nova funcionalidade: Chamada para geração de PDF se status approved e status_detail accredited
-    if (status === "approved" && status_detail === "accredited") {
-      try {
-        const pdfResponse = await fetch(
-          "https://ttnvqdkxivyumcipbfls.supabase.co/functions/v1/solicita-geracao-pdf",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              id_pedido: external_reference ? parseInt(external_reference) : null,
-            }),
-          }
-        );
-
-        if (!pdfResponse.ok) {
-          console.error("Erro ao solicitar geração do PDF:", await pdfResponse.text());
-        }
-      } catch (pdfError) {
-        console.error("Erro ao chamar endpoint de geração de PDF:", pdfError);
-        // Não lançamos o erro para não interromper o fluxo principal
-      }
-    }
-
-=======
->>>>>>> parent of 596ce97 (mudei o código devido ao limite de timeout do supabase que é de 5 segundos)
     // Retorno de sucesso com informações adicionais
     return new Response(
       JSON.stringify({ message: "Dados salvos com sucesso.", attempts, status }),
