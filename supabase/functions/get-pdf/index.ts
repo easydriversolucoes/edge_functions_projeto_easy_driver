@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const PROJETO_URL = Deno.env.get("PROJETO_URL")!;
@@ -6,96 +6,83 @@ const PROJETO_KEY = Deno.env.get("PROJETO_KEY")!;
 
 const supabase = createClient(PROJETO_URL, PROJETO_KEY);
 
-// Chave do PDF Monkey inserida diretamente
-const PDF_MONKEY_API_KEY = "3fu4hckGSC9Qzevkk3fa";
-
 serve(async (req) => {
   try {
     if (req.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
 
-    const { id, id_pedido } = await req.json();
-    if (!id || !id_pedido) {
-      return new Response("Missing required fields", { status: 400 });
+    const { document } = await req.json();
+
+    if (!document || !document.id || !document.download_url || !document.filename) {
+      return new Response("Missing required document fields", { status: 400 });
     }
 
-    const pdfMonkeyApiUrl = `https://api.pdfmonkey.io/api/v1/documents/${id}`;
+    const documentId = document.id;
+    const downloadUrl = document.download_url;
+    const filename = document.filename;
 
-    // Verifica status do PDF até que seja "success" e tenha "download_url"
-    let documentData = null;
-    for (let i = 0; i < 10; i++) { // Tenta até 10 vezes
-      const response = await fetch(pdfMonkeyApiUrl, {
-        headers: {
-          Authorization: `Bearer ${PDF_MONKEY_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      });
+    // Consultar a tabela "solicitacao_pdf" para obter o id_pedido correspondente
+    const { data: solicitacaoData, error: solicitacaoError } = await supabase
+      .from("solicitacao_pdf")
+      .select("id_pedido")
+      .eq("id_documento_pdf_monkey", documentId)
+      .single();
 
-      if (!response.ok) {
-        return new Response("Erro ao consultar PDF Monkey", { status: 500 });
-      }
-
-      const { document } = await response.json();
-      if (document.status === "success" && document.download_url) {
-        documentData = document;
-        break;
-      }
-
-      await new Promise((res) => setTimeout(res, 5000)); // Aguarda 5 segundos antes de tentar novamente
+    if (solicitacaoError || !solicitacaoData) {
+      console.error("Erro ao consultar solicitacao_pdf:", solicitacaoError);
+      return new Response("Erro ao consultar solicitacao_pdf", { status: 500 });
     }
 
-    if (!documentData) {
-      return new Response("PDF não gerado após várias tentativas", { status: 500 });
-    }
+    const idPedido = solicitacaoData.id_pedido;
 
-    const { download_url, filename } = documentData;
-
-    // Faz download do PDF
-    const pdfResponse = await fetch(download_url);
+    // Fazer download do PDF
+    const pdfResponse = await fetch(downloadUrl);
     if (!pdfResponse.ok) {
       return new Response("Erro ao baixar o PDF", { status: 500 });
     }
 
     const pdfData = await pdfResponse.arrayBuffer();
 
-    // Salva o PDF diretamente no bucket "recursos_pdf" sem criar subpastas
-    const filePath = filename;
+    // Salvar o PDF no bucket "recursos_pdf"
     const { error: uploadError } = await supabase.storage
       .from("recursos_pdf")
-      .upload(filePath, new Blob([pdfData]), {
+      .upload(filename, new Blob([pdfData]), {
         contentType: "application/pdf",
         upsert: true,
       });
 
     if (uploadError) {
+      console.error("Erro ao salvar PDF no Storage:", uploadError);
       return new Response(`Erro ao salvar PDF no Storage: ${uploadError.message}`, { status: 500 });
     }
 
-    // Gera URL pública válida por 31 dias
+    // Gerar URL pública para o PDF
     const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from("recursos_pdf")
-      .createSignedUrl(filePath, 31 * 24 * 60 * 60); // 31 dias em segundos
+      .createSignedUrl(filename, 31 * 24 * 60 * 60); // 31 dias em segundos
 
     if (signedUrlError || !signedUrlData) {
+      console.error("Erro ao gerar URL pública:", signedUrlError);
       return new Response(`Erro ao gerar URL do PDF: ${signedUrlError?.message}`, { status: 500 });
     }
 
     const pdfUrl = signedUrlData.signedUrl;
 
-    // Insere registro na tabela "recursos_gerados"
+    // Inserir registro na tabela "recursos_gerados"
     const { error: insertError } = await supabase.from("recursos_gerados").insert({
-      id_pedido,
-      id_documento_pdf_monkey: id,
+      id_pedido: idPedido,
+      id_documento_pdf_monkey: documentId,
       url_pdf_supabase_storage: pdfUrl,
     });
 
     if (insertError) {
+      console.error("Erro ao inserir registro na tabela recursos_gerados:", insertError);
       return new Response(`Erro ao inserir registro no banco: ${insertError.message}`, { status: 500 });
     }
 
     return new Response(
-      JSON.stringify({ message: "PDF processado e salvo com sucesso", pdfUrl }),
+      JSON.stringify({ message: "Webhook processado com sucesso", pdfUrl }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
