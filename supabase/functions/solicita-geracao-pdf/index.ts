@@ -9,9 +9,6 @@ const PDF_MONKEY_API_KEY = "3fu4hckGSC9Qzevkk3fa";
 const PDF_MONKEY_ENDPOINT = "https://api.pdfmonkey.io/api/v1/documents";
 const DOCUMENT_TEMPLATE_ID = "EDD907F2-5DAC-4974-9443-BE4BFB79D478";
 
-// Novo endpoint para a função get-pdf
-const GET_PDF_ENDPOINT = "https://ttnvqdkxivyumcipbfls.supabase.co/functions/v1/get-pdf";
-
 serve(async (req) => {
   try {
     if (req.method !== "POST") {
@@ -43,15 +40,15 @@ serve(async (req) => {
 
     // Consultar informações da infração
     const { data: pedidoData, error: pedidoError } = await supabase
-      .from('pedidos')
-      .select('enquadramento')
-      .eq('id_pedido', id_pedido)
+      .from("pedidos")
+      .select("enquadramento")
+      .eq("id_pedido", id_pedido)
       .single();
 
     const { data: infracaoData, error: infracaoError } = await supabase
-      .from('infracoes')
-      .select('artigo, descricao')
-      .eq('enquadramento', pedidoData?.enquadramento)
+      .from("infracoes")
+      .select("artigo, descricao")
+      .eq("enquadramento", pedidoData?.enquadramento)
       .single();
 
     if (errorInstancia || errorArgumentos || errorQualificacao || pedidoError || infracaoError) {
@@ -60,7 +57,7 @@ serve(async (req) => {
         errorArgumentos,
         errorQualificacao,
         pedidoError,
-        infracaoError
+        infracaoError,
       });
       return new Response("Erro ao buscar dados no Supabase", { status: 500 });
     }
@@ -70,7 +67,7 @@ serve(async (req) => {
       resposta_instancia: respostaInstancia,
       respostas_argumentos: respostasArgumentos,
       respostas_qualificacao: respostasQualificacao,
-      infracoes: infracaoData
+      infracoes: infracaoData,
     };
 
     const pdfMonkeyRequest = {
@@ -88,7 +85,7 @@ serve(async (req) => {
     const pdfMonkeyResponse = await fetch(PDF_MONKEY_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${PDF_MONKEY_API_KEY}`,
+        Authorization: `Bearer ${PDF_MONKEY_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(pdfMonkeyRequest),
@@ -112,25 +109,6 @@ serve(async (req) => {
     if (insertError) {
       console.error("Erro ao salvar dados no Supabase:", insertError);
       return new Response("Erro ao salvar dados no Supabase", { status: 500 });
-    }
-
-    // Fazer a requisição para a função get-pdf
-    const getPdfRequest = {
-      id_pedido,
-      id: id_documento_pdf_monkey,
-    };
-
-    const getPdfResponse = await fetch(GET_PDF_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(getPdfRequest),
-    });
-
-    if (!getPdfResponse.ok) {
-      console.error("Erro ao chamar a função get-pdf:", await getPdfResponse.text());
-      return new Response("Erro ao chamar a função get-pdf", { status: 500 });
     }
 
     return new Response(JSON.stringify({ success: true, id_documento_pdf_monkey }), {
